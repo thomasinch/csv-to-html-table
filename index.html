@@ -9,7 +9,9 @@
     <!-- DataTables CSS -->
     <link rel="stylesheet" href="https://cdn.datatables.net/1.10.19/css/dataTables.bootstrap4.min.css">
 
-    <!-- LZ-String (for link compression) -->
+    <!-- Pako (DEFLATE compression) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+    <!-- LZ‑String kept for backward‑compat decode of old URLs -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
 
     <style>
@@ -124,6 +126,30 @@
         });
     });
 
+    /* ===================== URL Compression Helpers (pako + base64) ===================== */
+    function uint8ArrayToBase64(bytes){
+        let binary="";
+        for(let i=0;i<bytes.length;i++) binary+=String.fromCharCode(bytes[i]);
+        return btoa(binary);
+    }
+    function base64ToUint8Array(base64){
+        const binary=atob(base64);
+        const len=binary.length;
+        const bytes=new Uint8Array(len);
+        for(let i=0;i<len;i++) bytes[i]=binary.charCodeAt(i);
+        return bytes;
+    }
+    function compressCsv(csv){
+        const deflated=pako.deflate(csv,{level:9});
+        return uint8ArrayToBase64(deflated);
+    }
+    function decompressCsv(b64){
+        try{
+            const bytes=base64ToUint8Array(b64);
+            return pako.inflate(bytes,{to:'string'});
+        }catch(err){ return null; }
+    }
+
     /* ===================== Helpers ===================== */
     function format_link(link){
         if(link && (link.startsWith('http://') || link.startsWith('https://')))
@@ -143,8 +169,8 @@
         const data=csvTableData();
         if(!data.length) return null;
         const csv=Papa.unparse(data);
-        const compressed=LZString.compressToEncodedURIComponent(csv);
-        return location.origin+location.pathname+"?data="+compressed;
+        const encoded=compressCsv(csv);
+        return location.origin+location.pathname+"?data="+encodeURIComponent(encoded);
     }
 
     function copyToClipboard(text){
@@ -261,12 +287,15 @@
     (function(){
         const params=new URLSearchParams(location.search);
         if(!params.has('data')) return;
+        const encoded=params.get('data');
+        let csv=decompressCsv(encoded);
+        if(!csv) csv=LZString.decompressFromEncodedURIComponent(encoded); // fallback for legacy links
+        if(!csv) { console.error('Failed to read shared data'); return; }
         try{
-            const csv=LZString.decompressFromEncodedURIComponent(params.get('data'));
             const parsed=Papa.parse(csv,{header:false,skipEmptyLines:true});
             const customFormatting={4:format_link};
             renderTableFromCsvData(parsed.data,{customFormatting});
-        }catch(err){ console.error('Failed to read shared data',err); }
+        }catch(err){ console.error('Failed to parse CSV',err); }
     })();
     </script>
 </body>
