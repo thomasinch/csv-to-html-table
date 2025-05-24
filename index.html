@@ -2,17 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>CSV to HTML Table</title>
+    <title>CSV to HTML Table Tool</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <!-- Bootstrap CSS for table styling -->
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <!-- DataTables CSS -->
     <link rel="stylesheet" href="https://cdn.datatables.net/1.10.19/css/dataTables.bootstrap4.min.css">
-
-    <!-- Pako (DEFLATE compression) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
-    <!-- LZ‑String kept for backward‑compat decode of old URLs -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
 
     <style>
         body {
@@ -20,8 +15,15 @@
             padding: 30px 0;
             background: #fafafa;
         }
+        h1 {
+            text-align: center;
+            margin: 0 0 20px 0;
+            font-size: 2rem;
+            font-weight: 600;
+            color: #000;
+        }
         #intro-table {
-            margin: 60px auto 0 auto;
+            margin: 40px auto 0 auto;
             border-radius: 8px;
             box-shadow: 0 1px 10px rgba(0,0,0,0.07);
             background: #fff;
@@ -74,6 +76,7 @@
     </style>
 </head>
 <body>
+    <h1>CSV to HTML Table Tool</h1>
     <div class="container">
         <!-- Real, fully functional searchable/sortable HTML table at top -->
         <table id="intro-table" class="table table-bordered table-striped">
@@ -81,23 +84,19 @@
                 <tr>
                     <th>Column 1</th>
                     <th>Column 2</th>
-                    <th>Column 3</th>
                 </tr>
             </thead>
             <tbody>
                 <tr>
-                    <td>1</td>
-                    <td>What is this?</td>
-                    <td>Drag and drop a CSV onto the page, or <button class="intro-btn" id="intro-upload-btn">Click here</button> to add a CSV.<br><br>That CSV will then be presented as a simple, searchable HTML table in your browser, like this one.</td>
+                    <td>1. What is this?</td>
+                    <td>Drag and drop a CSV anywhere on the page, or <button class="intro-btn" id="intro-upload-btn">click here</button> to add one.<br><br>That CSV will then be presented as a simple, searchable HTML table in your browser, like this one.</td>
                 </tr>
                 <tr>
-                    <td>2</td>
-                    <td>Privacy</td>
+                    <td>2. Privacy</td>
                     <td>The data from your CSV never leaves your browser.</td>
                 </tr>
                 <tr>
-                    <td>3</td>
-                    <td>Credits</td>
+                    <td>3. Credits</td>
                     <td>
                         Adapted from <a class="credit-link" href="https://github.com/derekeder/csv-to-html-table" target="_blank">the original project</a>, which was created by <a class="credit-link" href="https://derekeder.com/" target="_blank">Derek Eder</a>.<br>
                         Created by <a class="credit-link" href="https://thomasdhughes.com/" target="_blank">Thomas Hughes</a>.
@@ -122,33 +121,9 @@
     $(function(){
         $('#intro-table').DataTable({
             paging:false, searching:true, info:false, ordering:true, autoWidth:false,
-            dom:'t', columnDefs:[{orderable:false, targets:1}]
+            dom:'t', columnDefs:[{orderable:false, targets:0}]
         });
     });
-
-    /* ===================== URL Compression Helpers (pako + base64) ===================== */
-    function uint8ArrayToBase64(bytes){
-        let binary="";
-        for(let i=0;i<bytes.length;i++) binary+=String.fromCharCode(bytes[i]);
-        return btoa(binary);
-    }
-    function base64ToUint8Array(base64){
-        const binary=atob(base64);
-        const len=binary.length;
-        const bytes=new Uint8Array(len);
-        for(let i=0;i<len;i++) bytes[i]=binary.charCodeAt(i);
-        return bytes;
-    }
-    function compressCsv(csv){
-        const deflated=pako.deflate(csv,{level:9});
-        return uint8ArrayToBase64(deflated);
-    }
-    function decompressCsv(b64){
-        try{
-            const bytes=base64ToUint8Array(b64);
-            return pako.inflate(bytes,{to:'string'});
-        }catch(err){ return null; }
-    }
 
     /* ===================== Helpers ===================== */
     function format_link(link){
@@ -157,61 +132,13 @@
         return link||"";
     }
 
+    /* Extract current table data (used to rebuild a CSV for downloading, etc. if needed) */
     function csvTableData(){
         const rows=[];
         document.querySelectorAll('#csv-html-table tr').forEach(tr=>{
             rows.push([...tr.querySelectorAll('th,td')].map(td=>td.textContent));
         });
         return rows;
-    }
-
-    function buildShareUrl(){
-        const data=csvTableData();
-        if(!data.length) return null;
-        const csv=Papa.unparse(data);
-        const encoded=compressCsv(csv);
-        return location.origin+location.pathname+"?data="+encodeURIComponent(encoded);
-    }
-
-    function copyToClipboard(text){
-        return navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject();
-    }
-
-    /* ===================== "Make link" button logic ===================== */
-    function resetLinkUI(){
-        const filter=document.querySelector('#csv-html-table_filter');
-        if(filter) filter.querySelectorAll('#make-link-btn, #link-wrapper').forEach(el=>el.remove());
-    }
-
-    function insertLinkButton(){
-        const filter=document.querySelector('#csv-html-table_filter');
-        if(!filter || document.getElementById('make-link-btn')) return; // already present
-
-        const btn=document.createElement('button');
-        btn.id='make-link-btn';
-        btn.className='btn btn-sm btn-outline-secondary mr-2';
-        btn.textContent='Make link to table';
-        btn.addEventListener('click',async()=>{
-            const url=buildShareUrl();
-            if(!url){ alert('No table data found.'); return; }
-            try{ await copyToClipboard(url); }
-            catch(e){ console.warn('Clipboard unavailable'); }
-            // Replace UI
-            btn.remove();
-            const wrapper=document.createElement('div');
-            wrapper.id='link-wrapper';
-            wrapper.className='d-flex align-items-center'
-            wrapper.innerHTML=`<span class='mr-2'>Link copied <span style='font-size:1.2em;'>&#10003;</span></span>`;
-            const inp=document.createElement('input');
-            inp.type='text';
-            inp.className='form-control form-control-sm';
-            inp.style.maxWidth='420px';
-            inp.readOnly=true; inp.value=url;
-            inp.addEventListener('click',function(){this.select();});
-            wrapper.appendChild(inp);
-            filter.prepend(wrapper);
-        });
-        filter.prepend(btn);
     }
 
     /* ===================== Render CSV into HTML table ===================== */
@@ -249,10 +176,6 @@
         // (re)initialise DataTable
         if($.fn.DataTable.isDataTable('#csv-html-table')) $('#csv-html-table').DataTable().destroy();
         $('#csv-html-table').DataTable({ paging:false, searching:true, info:false, autoWidth:false });
-
-        // ensure link button is visible
-        resetLinkUI();
-        insertLinkButton();
     }
 
     /* ===================== Drag & Drop and File Handling ===================== */
@@ -282,21 +205,6 @@
     document.getElementById('file-input').addEventListener('change',e=>handleFiles(e.target.files));
 
     addGlobalDragDrop();
-
-    /* ===================== Init from share URL (if present) ===================== */
-    (function(){
-        const params=new URLSearchParams(location.search);
-        if(!params.has('data')) return;
-        const encoded=params.get('data');
-        let csv=decompressCsv(encoded);
-        if(!csv) csv=LZString.decompressFromEncodedURIComponent(encoded); // fallback for legacy links
-        if(!csv) { console.error('Failed to read shared data'); return; }
-        try{
-            const parsed=Papa.parse(csv,{header:false,skipEmptyLines:true});
-            const customFormatting={4:format_link};
-            renderTableFromCsvData(parsed.data,{customFormatting});
-        }catch(err){ console.error('Failed to parse CSV',err); }
-    })();
     </script>
 </body>
 </html>
