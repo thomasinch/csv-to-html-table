@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CSV to HTML Table</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Bootstrap CSS for table styling -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <!-- DataTables CSS -->
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.10.19/css/dataTables.bootstrap4.min.css">
+
+    <!-- LZ-String (for link compression) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+
+    <style>
+        body {
+            font: 18px/1.3em Arial, sans-serif;
+            padding: 30px 0;
+            background: #fafafa;
+        }
+        #intro-table {
+            margin: 60px auto 0 auto;
+            border-radius: 8px;
+            box-shadow: 0 1px 10px rgba(0,0,0,0.07);
+            background: #fff;
+            max-width: 950px;
+        }
+        #intro-table th, #intro-table td {
+            vertical-align: middle;
+            border-bottom: 1px solid #bbb !important;
+            padding: 14px 18px;
+            font-size: 1.07em;
+        }
+        #intro-table th {
+            background: #f7f7f7;
+            color: #555;
+            text-align: left;
+            font-weight: 600;
+        }
+        #intro-table td {
+            background: #fff;
+            color: #333;
+        }
+        .intro-btn {
+            display: inline-block;
+            background: #007bff;
+            color: #fff;
+            padding: 2px 13px;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            font-weight: 400;
+            font-size: 0.95em;
+            line-height: 1.3;
+            transition: background 0.18s;
+            text-decoration: none;
+            margin: 0 1px;
+            box-shadow: none;
+        }
+        .intro-btn:hover { background: #0056b3; }
+        .credit-link, .credit-link:visited { color: #007bff; text-decoration: underline; }
+        .credit-link:hover { color: #0056b3; }
+        #table-container { margin-top: 38px; }
+        .csv-btns { margin-top: 20px; display: flex; gap: 10px; justify-content: center; }
+        /* Hide upload area visually (drag drop covers whole page now) */
+        #uploader-area { display:none; }
+        .dt-buttons .btn { margin-right: 4px; }
+        .dragover-body { box-shadow: 0 0 0 6px #b8e1ff inset !important; }
+        @media (max-width: 600px) {
+            #intro-table, #intro-table th, #intro-table td { font-size: 1em; padding: 7px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Real, fully functional searchable/sortable HTML table at top -->
+        <table id="intro-table" class="table table-bordered table-striped">
+            <thead>
+                <tr>
+                    <th>Column 1</th>
+                    <th>Column 2</th>
+                    <th>Column 3</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>1</td>
+                    <td>What is this?</td>
+                    <td>Drag and drop a CSV onto the page, or <button class="intro-btn" id="intro-upload-btn">Click here</button> to add a CSV.<br><br>That CSV will then be presented as a simple, searchable HTML table in your browser, like this one.</td>
+                </tr>
+                <tr>
+                    <td>2</td>
+                    <td>Privacy</td>
+                    <td>The data from your CSV never leaves your browser.</td>
+                </tr>
+                <tr>
+                    <td>3</td>
+                    <td>Credits</td>
+                    <td>
+                        Adapted from <a class="credit-link" href="https://github.com/derekeder/csv-to-html-table" target="_blank">the original project</a>, which was created by <a class="credit-link" href="https://derekeder.com/" target="_blank">Derek Eder</a>.<br>
+                        Created by <a class="credit-link" href="https://thomasdhughes.com/" target="_blank">Thomas Hughes</a>.
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        <div id="table-container"></div>
+    </div>
+
+    <!-- File input for click (hidden) -->
+    <input type="file" id="file-input" accept=".csv,text/csv" style="display:none;">
+
+    <!-- jQuery, Bootstrap JS, DataTables, PapaParse (for csv) -->
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://cdn.datatables.net/1.10.19/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.10.19/js/dataTables.bootstrap4.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+    <script>
+    /* ===================== DataTables for intro ===================== */
+    $(function(){
+        $('#intro-table').DataTable({
+            paging:false, searching:true, info:false, ordering:true, autoWidth:false,
+            dom:'t', columnDefs:[{orderable:false, targets:1}]
+        });
+    });
+
+    /* ===================== Helpers ===================== */
+    function format_link(link){
+        if(link && (link.startsWith('http://') || link.startsWith('https://')))
+            return `<a href="${link}" target="_blank">${link}</a>`;
+        return link||"";
+    }
+
+    function csvTableData(){
+        const rows=[];
+        document.querySelectorAll('#csv-html-table tr').forEach(tr=>{
+            rows.push([...tr.querySelectorAll('th,td')].map(td=>td.textContent));
+        });
+        return rows;
+    }
+
+    function buildShareUrl(){
+        const data=csvTableData();
+        if(!data.length) return null;
+        const csv=Papa.unparse(data);
+        const compressed=LZString.compressToEncodedURIComponent(csv);
+        return location.origin+location.pathname+"?data="+compressed;
+    }
+
+    function copyToClipboard(text){
+        return navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject();
+    }
+
+    /* ===================== "Make link" button logic ===================== */
+    function resetLinkUI(){
+        const filter=document.querySelector('#csv-html-table_filter');
+        if(filter) filter.querySelectorAll('#make-link-btn, #link-wrapper').forEach(el=>el.remove());
+    }
+
+    function insertLinkButton(){
+        const filter=document.querySelector('#csv-html-table_filter');
+        if(!filter || document.getElementById('make-link-btn')) return; // already present
+
+        const btn=document.createElement('button');
+        btn.id='make-link-btn';
+        btn.className='btn btn-sm btn-outline-secondary mr-2';
+        btn.textContent='Make link to table';
+        btn.addEventListener('click',async()=>{
+            const url=buildShareUrl();
+            if(!url){ alert('No table data found.'); return; }
+            try{ await copyToClipboard(url); }
+            catch(e){ console.warn('Clipboard unavailable'); }
+            // Replace UI
+            btn.remove();
+            const wrapper=document.createElement('div');
+            wrapper.id='link-wrapper';
+            wrapper.className='d-flex align-items-center'
+            wrapper.innerHTML=`<span class='mr-2'>Link copied <span style='font-size:1.2em;'>&#10003;</span></span>`;
+            const inp=document.createElement('input');
+            inp.type='text';
+            inp.className='form-control form-control-sm';
+            inp.style.maxWidth='420px';
+            inp.readOnly=true; inp.value=url;
+            inp.addEventListener('click',function(){this.select();});
+            wrapper.appendChild(inp);
+            filter.prepend(wrapper);
+        });
+        filter.prepend(btn);
+    }
+
+    /* ===================== Render CSV into HTML table ===================== */
+    function renderTableFromCsvData(data, options={}){
+        const el=document.getElementById('table-container');
+        el.innerHTML='';
+        if(!data||!data.length){ el.innerHTML='<div class="alert alert-warning">No data found in CSV file.</div>'; return; }
+
+        const table=document.createElement('table');
+        table.className='table table-striped table-condensed';
+        table.id='csv-html-table';
+
+        // header
+        const thead=document.createElement('thead');
+        const headRow=document.createElement('tr');
+        data[0].forEach(h=>{ const th=document.createElement('th'); th.textContent=h; headRow.appendChild(th); });
+        thead.appendChild(headRow); table.appendChild(thead);
+
+        // body
+        const tbody=document.createElement('tbody');
+        for(let i=1;i<data.length;i++){
+            const row=document.createElement('tr');
+            for(let c=0;c<data[i].length;c++){
+                const td=document.createElement('td');
+                const val=data[i][c];
+                if(options.customFormatting && options.customFormatting[c]) td.innerHTML=options.customFormatting[c](val);
+                else td.textContent=val;
+                row.appendChild(td);
+            }
+            tbody.appendChild(row);
+        }
+        table.appendChild(tbody);
+        el.appendChild(table);
+
+        // (re)initialise DataTable
+        if($.fn.DataTable.isDataTable('#csv-html-table')) $('#csv-html-table').DataTable().destroy();
+        $('#csv-html-table').DataTable({ paging:false, searching:true, info:false, autoWidth:false });
+
+        // ensure link button is visible
+        resetLinkUI();
+        insertLinkButton();
+    }
+
+    /* ===================== Drag & Drop and File Handling ===================== */
+    function addGlobalDragDrop(){
+        function preventDefaults(e){ e.preventDefault(); e.stopPropagation(); }
+        ['dragenter','dragover','dragleave','drop'].forEach(ev=>document.body.addEventListener(ev,preventDefaults,false));
+        document.body.addEventListener('dragover',()=>document.body.classList.add('dragover-body'));
+        document.body.addEventListener('dragleave',()=>document.body.classList.remove('dragover-body'));
+        document.body.addEventListener('drop',e=>{
+            document.body.classList.remove('dragover-body');
+            if(e.dataTransfer.files && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+        });
+    }
+
+    function handleFiles(files){
+        if(!files.length) return;
+        const file=files[0];
+        if(!/\.csv$/i.test(file.name)){ alert('Please upload a valid .csv file.'); return; }
+        Papa.parse(file,{ complete:results=>{
+                const customFormatting={4:format_link};
+                renderTableFromCsvData(results.data,{customFormatting});
+            }, skipEmptyLines:true });
+    }
+
+    /* ===================== UI Controls ===================== */
+    document.getElementById('intro-upload-btn').addEventListener('click',e=>{ e.preventDefault(); document.getElementById('file-input').click(); });
+    document.getElementById('file-input').addEventListener('change',e=>handleFiles(e.target.files));
+
+    addGlobalDragDrop();
+
+    /* ===================== Init from share URL (if present) ===================== */
+    (function(){
+        const params=new URLSearchParams(location.search);
+        if(!params.has('data')) return;
+        try{
+            const csv=LZString.decompressFromEncodedURIComponent(params.get('data'));
+            const parsed=Papa.parse(csv,{header:false,skipEmptyLines:true});
+            const customFormatting={4:format_link};
+            renderTableFromCsvData(parsed.data,{customFormatting});
+        }catch(err){ console.error('Failed to read shared data',err); }
+    })();
+    </script>
+</body>
+</html>
